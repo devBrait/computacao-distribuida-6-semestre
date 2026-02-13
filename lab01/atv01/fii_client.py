@@ -1,48 +1,38 @@
 import socket
 
-# Configurações de Conexão
-# Se o servidor estiver em outra máquina, troque '127.0.0.1' pelo IP dela.
-SERVER_IP = '127.0.0.1' 
+# Configuração de conexão local
+SERVER_IP = '127.0.0.1'
 SERVER_PORT = 8080
 
-def iniciar_cliente():
-    print("=== Cliente de Teste FII ===")
-    print("Exemplos de comandos: PRECO;HGLG11 | PROVENTO;KNRI11 | STATUS;MXRF11")
-    print("Digite 'sair' para encerrar.\n")
+def run_client():
+    print("--- Cliente de Teste FII ---")
+    print("Formato: COMANDO;TICKER")
+    print("Exemplos: PRECO;MXRF11 | PROVENTO;KNRI11 | STATUS;HGLG11")
+    print("Digite 'exit' para sair.\n")
 
     while True:
+        user_input = input("Digite o comando: ")
+        
+        if user_input.lower() == 'exit':
+            break
+
+        # Cria um novo socket para cada requisição
         try:
-            # 1. Entrada do usuário
-            mensagem = input("Comando > ")
-            
-            if mensagem.lower() == 'sair':
-                break
-
-            # 2. Criação do Socket TCP
-            # Criamos o socket DENTRO do loop porque o servidor da Atividade 1
-            # fecha a conexão logo após enviar a resposta (modelo iterativo simples).
-            cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            
-            # 3. Conexão com o servidor
-            cliente.connect((SERVER_IP, SERVER_PORT)) # [cite: 32]
-
-            # 4. Envio da mensagem
-            # Importante: encode('utf-8') conforme solicitado nas dicas gerais
-            cliente.sendall(mensagem.encode('utf-8')) # 
-
-            # 5. Recebimento da resposta
-            data = cliente.recv(1024)
-            resposta = data.decode('utf-8') # 
-
-            print(f"Resposta do Servidor: {resposta}\n")
-
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                # Tenta conectar ao servidor
+                client_socket.connect((SERVER_IP, SERVER_PORT))
+                
+                # Envia a mensagem codificada em UTF-8
+                client_socket.sendall(user_input.encode('utf-8'))
+                
+                # Aguarda e recebe a resposta do servidor
+                response = client_socket.recv(1024)
+                print(f"Resposta do Servidor: {response.decode('utf-8')}\n")
+                
         except ConnectionRefusedError:
-            print("ERRO: Não foi possível conectar. O servidor está rodando?")
+            print("ERRO: Não foi possível conectar. Verifique se o servidor está rodando.\n")
         except Exception as e:
-            print(f"ERRO: {e}")
-        finally:
-            # Garante que o socket seja fechado a cada requisição
-            cliente.close()
+            print(f"ERRO: {e}\n")
 
 if __name__ == "__main__":
-    iniciar_cliente()
+    run_client()
