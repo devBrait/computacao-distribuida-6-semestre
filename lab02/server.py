@@ -1,69 +1,86 @@
 import socket
 import threading
-import datetime
+from datetime import datetime
 
+# Definição das configs do servidor
 HOST = '0.0.0.0'
-PORT = 12346
-storage = 10
+PORT = 12346  
+
+# Dicionário que simula o estoque, como se estivesse em um db
+stock = { "estoque": 10 }
+
+# Lock do threading para evitar condições de corrida
 lock = threading.Lock()
-clientes_ativos = []
+# Lista que armazena os clientes ativos
+current_customers = []
 
-def broadcast(mensagem):
-    for client_conn in clientes_ativos[:]:
-        try:
-            client_conn.sendall(mensagem.encode())
-        except:
-            clientes_ativos.remove(client_conn)
-
+# Função para tratar todas as requests
 def handle_client(conn, addr):
-    print(f"[{datetime.datetime.now()}] Conectado por {addr}")
-    clientes_ativos.append(conn)
+
+    # Exibe conexão e adiciona cliente
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Conectado por {addr[0]}:{addr[1]}") 
+    current_customers.append(conn)
     
     try:
         while True:
-            data = conn.recv(1024).decode().strip().upper()
-            if not data:
+            # Recebe a requisição do cliente
+            request = conn.recv(1024).decode('utf-8').strip().upper()
+            if not request:
                 break
             
-            log_msg = f"[{datetime.datetime.now()}] Cliente {addr} enviou: {data}"
-            print(log_msg)
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Cliente {addr} enviou: {request}")
+            
+            if request == "CONSULTAR":
+                answer = f"Estoque atual: {stock['estoque']}"
+                conn.sendall(answer.encode('utf-8')) # Envia a resposta calculada de volta ao cliente com o estoque atual
 
-            if data == "CONSULTAR":
-                resposta = f"storage atual: {storage}"
-                conn.sendall(resposta.encode())
-
-            elif data == "COMPRAR":
+            elif request == "COMPRAR":
+                #lock garante que apenas este cliente modifique o estoque
                 with lock:
-                    if storage > 0:
-                        storage -= 1
-                        storage_atual = storage
-                        resposta = f"Compra realizada. storage restante: {storage_atual}"
-                        conn.sendall(resposta.encode())
+                    # Verifica e altera direto no dicionário
+                    if stock["estoque"] > 0:
+                        stock["estoque"] -= 1
+                        current_stock = stock["estoque"] 
                         
-                        if storage_atual == 0:
-                            broadcast("\nAVISO: O storage acabou de esgotar!\n")
+                        answer = f"Compra realizada!!! Estoque restante: {current_stock}"
+                        conn.sendall(answer.encode('utf-8')) # Envia o sucesso da compra para este cliente
+                        
+                        # Avisa todos os clientes que o estoque acabou
+                        if current_stock == 0:
+                            warning = "ESTOQUE ESGOTADO!!!"
+                            for client in current_customers.copy():
+                                try:
+                                    client.sendall(warning.encode('utf-8'))
+                                except:
+                                    current_customers.remove(client) # Remove clientes que se desconectaram indevidamente
                     else:
-                        conn.sendall("ERRO: Produto esgotado".encode())
+                        # Tratamento quando o estoque já estivesse zerado antes do cliente entrar na região crítica
+                        conn.sendall("ERRO: Produto esgotado".encode('utf-8'))
             else:
-                conn.sendall("Comando desconhecido".encode())
+                conn.sendall("Ocorreu algo inesperado".encode('utf-8'))
                 
-    except ConnectionResetError:
-        print(f"Cliente {addr} desconectou abruptamente.")
+    except Exception as e:
+        print(f"Cliente {addr} foi desconectado ou apresentou erro: {e}")
     finally:
-        clientes_ativos.remove(conn)
+        # Finaliza a conexão
+        if conn in current_customers:
+            current_customers.remove(conn)
         conn.close()
-        print(f"Conexão encerrada com {addr}")
+        print(f"Conexão finalizada com {addr}")
 
+# Função para inicialização do servidor
 def start_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
+
+    # Inicia o servidor
     server.listen()
-    print(f"Servidor aguardando conexões na porta {PORT}...")
+    print(f"Aguardando conexões na porta {PORT}...")
     
+    # Fica ouvindo e aguardando conexão de todos os clientes
     while True:
         conn, addr = server.accept()
         thread = threading.Thread(target=handle_client, args=(conn, addr))
-        thread.daemon = True
         thread.start()
 
 if __name__ == "__main__":
